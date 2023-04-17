@@ -2,11 +2,12 @@
 #include <ArduinoOTA.h>
 #include <WiFi.h>
 #include <FastLED.h>
+#include <ACAN_ESP32.h>
 
 #include "config_private.h"
 
-#define CAN_TX 5 // ESP32 -> CAN
-#define CAN_RX 4 // CAN -> ESP32
+#define CAN_TX GPIO_NUM_5 // ESP32 -> CAN
+#define CAN_RX GPIO_NUM_4 // CAN -> ESP32
 #define CAN_SILENT 21 // S
 
 #define LED_POWER 13
@@ -14,23 +15,12 @@
 
 CRGB leds[1];
 
-void tryConnectWifi() {
-  leds[0] = CRGB::Blue;
-  FastLED.show();
-
-  if (WiFi.waitForConnectResult() == WL_CONNECTED) {
-    ArduinoOTA.begin();
-    leds[0] = CRGB::Green;
-    FastLED.show();
-    Serial.println("WiFi connected");
-    return;
-  }
-
-  Serial.println("WiFi connection failed!");
+static void errorLoop() {
   leds[0] = CRGB::Red;
   FastLED.show();
-  delay(5000);
-  ESP.restart();
+  while (1) {
+    ArduinoOTA.handle();
+  }
 }
 
 void setup() {
@@ -48,21 +38,41 @@ void setup() {
   digitalWrite(LED_POWER, HIGH);
   digitalWrite(LED_DATA, LOW);
 
+  digitalWrite(LED_POWER, LOW);
   FastLED.addLeds<WS2812B, LED_DATA, GRB>(leds, 1);
+  leds[0] = CRGB::Blue;
+  FastLED.show();
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   ArduinoOTA.setPassword((const char *)OTA_PASSWORD);
+  ArduinoOTA.begin();
 
-  digitalWrite(LED_POWER, LOW);
+  ACAN_ESP32_Settings settings(1000 * 1000); // 1 Mbit/s
+  settings.mRxPin = CAN_RX;
+  settings.mTxPin = CAN_TX;
+  settings.mRequestedCANMode = ACAN_ESP32_Settings::ListenOnlyMode;
+  const uint32_t errorCode = ACAN_ESP32::can.begin(settings);
+  if (errorCode) {
+    Serial.print("CAN begin error: 0x");
+    Serial.println(errorCode, HEX);
+    errorLoop();
+  }
+
   Serial.println("Initialization complete");
   delay(100);
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    tryConnectWifi();
+  if (WiFi.status() == WL_CONNECTED) {
+    if ((int)leds[0] != (int)CRGB::Green) {
+      leds[0] = CRGB::Green;
+      FastLED.show();
+    }
+  } else if ((int)leds[0] != (int)CRGB::Yellow) {
+    leds[0] = CRGB::Yellow;
+    FastLED.show();
   }
   ArduinoOTA.handle();
 }
