@@ -13,14 +13,27 @@
 #define LED_POWER 13
 #define LED_DATA 2 // WS2812B
 
+#define LED_ERROR 0x010000
+#define LED_WIFI_DISCONNECTED 0x010100
+#define LED_WIFI_CONNECTED 0x000100
+#define LED_INITIALIZING 0x000001
+
 CRGB leds[1];
 
 static void errorLoop() {
-  leds[0] = CRGB::Red;
+  leds[0] = LED_ERROR;
   FastLED.show();
   while (1) {
     ArduinoOTA.handle();
   }
+}
+
+static void sedLed(const CRGB &color) {
+  if (leds[0] == color) {
+    return;
+  }
+  leds[0] = color;
+  FastLED.show();
 }
 
 void setup() {
@@ -35,12 +48,11 @@ void setup() {
 
   pinMode(LED_POWER, OUTPUT);
   pinMode(LED_DATA, OUTPUT);
-  digitalWrite(LED_POWER, HIGH);
-  digitalWrite(LED_DATA, LOW);
-
   digitalWrite(LED_POWER, LOW);
+  digitalWrite(LED_DATA, LOW);
+  delay(100);
   FastLED.addLeds<WS2812B, LED_DATA, GRB>(leds, 1);
-  leds[0] = CRGB::Blue;
+  leds[0] = LED_INITIALIZING;
   FastLED.show();
 
   WiFi.mode(WIFI_STA);
@@ -66,13 +78,9 @@ void setup() {
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    if ((int)leds[0] != (int)CRGB::Green) {
-      leds[0] = CRGB::Green;
-      FastLED.show();
-    }
-  } else if ((int)leds[0] != (int)CRGB::Yellow) {
-    leds[0] = CRGB::Yellow;
-    FastLED.show();
+    sedLed(LED_WIFI_CONNECTED);
+  } else {
+    sedLed(LED_WIFI_DISCONNECTED);
   }
   ArduinoOTA.handle();
 }
